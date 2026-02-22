@@ -1,16 +1,18 @@
 import os
-import discord                 # Third-party: The main Discord API wrapper
-from discord.ext import commands ,tasks  # Third-party: To make the bot check the XML on a timer
+import discord                 
+from discord.ext import commands ,tasks  
 from dotenv import load_dotenv
-import xml.etree.ElementTree as ET # Standard: To parse and read your new.xml file
-import requests                # Third-party: To download the XML if it's hosted online
-import datetime                # Standard: To format the <updated> timestamps for Discord
+import xml.etree.ElementTree as ET 
+import requests                
+import datetime         
+import json   
 from colorama import init, Fore
 from zoneinfo import ZoneInfo
+from bs4 import BeautifulSoup
 
 # ---------------- Logging ---------------- #
 def log(message: str, level: str = "INFO") -> None:
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
     colors = {
         "INFO": Fore.CYAN,
         "SUCCESS": Fore.GREEN,
@@ -32,6 +34,9 @@ if not TOKEN:
     log("DISCORD_TOKEN is not set in the environment", "ERROR")
 else: 
     log("DISCORD_TOKEN Loaded", "SUCCESS")
+
+# ---------------- Cache ---------------- #
+lastToolCache = {} # Stores tools for commands
 
 
 # ---------------- Defaults ---------------- #
@@ -76,36 +81,109 @@ async def getNewTools():
             "title": entry.find('atom:title',ns).text,
             "summary": entry.find('atom:summary',ns).text,
             "link": entry.find('atom:link', ns).get('href'),
-            "updated": entry.find('atom:updated', ns ).text
+            # "updated": entry.find('atom:updated', ns ).text
         }
         tools.append(toolData)
     return tools
 
 async def getToolOfTheWeek():
-    """Fetch Terminal Trove 'Tool of The Week' RSS"""
-    url = "https://terminaltrove.com/totw.xml"
-    response = requests.get(url)
-
-    if response.status_code != 200:
-        log(f"Cannot Fetch 'toolOfTheWeek' URL: <{url}>", "ERROR")
-        return []
-    else:
-        log(f"'toolOfTheWeek' URL Loaded: <{url}>", "SUCCESS")
+    """Fetch Terminal Trove 'Tool of The Week' from HTML"""
+    url = "https://terminaltrove.com/tool-of-the-week/"
+    headers = {"User-Agent": "Mozilla/5.0"}
     
-    root = ET.fromstring(response.content)
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
 
-    ns = {'atom': 'http://www.w3.org/2005/Atom'}
+        if response.status_code != 200:
+            log(f"Cannot Fetch 'toolOfTheWeek' URL: <{url}>", "ERROR")
+            return []
+        
+        log(f"'toolOfTheWeek' URL Loaded: <{url}>", "SUCCESS")
+        soup = BeautifulSoup(response.text, 'html.parser')
+        results = []
+        
+        mainContent = soup.find('main')
+        if not mainContent:
+            log("Could not find <main> content for TOTW", "WARNING")
+            return []
 
-    tools = []
-    for entry in root.findall('atom:entry', ns ):
-        toolData = {
-            "title": entry.find('atom:title',ns).text,
-            "summary": entry.find('atom:summary',ns).text,
-            "link": entry.find('atom:link', ns).get('href'),
-            "updated": entry.find('atom:updated', ns ).text
-        }
-        tools.append(toolData)
-    return tools
+        # Find the main visual (Banner or GIF)
+        picUrl = None
+        for img in mainContent.find_all('img'):
+            src = img.get('src', '')
+            if any(src.endswith(ext) for ext in ['.png', '.gif', '.jpg']):
+                picUrl = f"https://terminaltrove.com{src}" if src.startswith('/') else src
+                break
+        
+        # Grab the title (usually in an h1 or h2 inside main)
+        titleEl = mainContent.find('h1') or mainContent.find('h2')
+        title = titleEl.get_text(strip=True) if titleEl else "Tool of the Week"
+        
+        # Grab the first paragraph for the description
+        summaryEl = mainContent.find('p')
+        summary = summaryEl(strip=True) if summaryEl else "No description available."
+
+        results.append({
+            "title": title,
+            "summary": summary,
+            "link": url,
+            "gif": picUrl, # Keeping key 'gif' so it works with searchEmbed()
+            "updated": datetime.datetime.now().strftime("%Y-%m-%d")
+        })
+        
+        return results
+
+    except Exception as e:
+        log(f"TOTW Scrape Error: {e}", "ERROR")
+        return []
+    
+    
+async def scrapeSearch(query: str):
+    # Search results are kept here
+    cleanQuery = query.lower().replace(" ", "-").strip("/")
+    url = f"https://terminaltrove.com/{cleanQuery}/"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return []
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+        results = []
+        
+        picUrl = None
+        for img in soup.find('main').find_all('img'):
+                src = img.get('src', '')
+                if src.endswith('.png'):
+                    picUrl=f"https://terminaltrove.com{src}" if src.startswith('/') else src
+                    break
+                elif src.endswith('.gif'):
+                    # Handle relative URLs
+                    picUrl = f"https://terminaltrove.com{src}" if src.startswith('/') else src
+                    break # Stop at the first GIF found
+        
+        
+        if soup.find('div', id='install'):
+            title = soup.find('h1').get_text(strip=True)
+            tagline = soup.find('p', id='tagline').get_text(strip=True) if soup.find('p', id='tagline') else ""
+            results.append({
+                "title": title,
+                "summary": tagline,
+                "link": f"https://terminaltrove.com/{query}/",
+                "updated": "Direct Match",
+                "gif": picUrl
+            })
+            return results
+        
+    except Exception as e:
+        log(f"Search error: {e}", "ERROR")
+        return []
+
+def saveCacheToFile(data):
+    with open('tool_cache.json', 'w') as f:
+        json.dump(data, f, indent=4)
+
 
 
 
@@ -146,7 +224,23 @@ class CreateEmbed(discord.ui.View):
         )
         return embed
     
-    def createSingleEmbed (self, index=0):
+    
+    def searchEmbed(self, index=0):
+        tool = self.data[index]
+        
+        embed = discord.Embed(
+            title=f"TOOL FOUND: {tool['title']}",
+            description=f"{tool['summary']}\n\n[View on Terminal Trove]({tool['link']})",
+            color=0xffffff
+        )
+        
+        if tool.get('gif'):
+            embed.set_image(url=tool['gif'])
+                    
+        embed.set_footer(text="lol")
+        return embed
+    
+    def totwEmbed (self, index=0):
         """Embed for TOTW and Search command"""
         tool = self.data[index]
 
@@ -155,7 +249,10 @@ class CreateEmbed(discord.ui.View):
             description=f"{tool['summary']}\n\n[View on Terminal Trove]({tool['link']})",
             color=0xF1C40F # Star Gold
         )
-        embed.set_footer(text=f"Last Updated: {tool['updated']}")  
+        embed.set_footer(text=f"Last Updated: {tool['updated']}") 
+        
+        if tool.get('gif'):
+            embed.set_image(url=tool['gif']) 
 
         return embed
     
@@ -208,6 +305,8 @@ async def newtools(interaction: discord.Interaction):
         log("'newTools' not loaded", "ERROR")
         return await interaction.followup.send("Could not fetch tools at this time...")
     
+    saveCacheToFile(tools)
+    
     # Create and send embed
     view = CreateEmbed(data=tools, title="New Tools", color=0xff7ec1)
     embed = view.createEmbed()
@@ -221,9 +320,24 @@ async def totw(interaction: discord.Interaction):
     if not tools:
         return await interaction.followup.send("Could not fetch tools.")
     view = CreateEmbed(data=tools)
-    await interaction.followup.send(embed=view.createSingleEmbed(0))
+    await interaction.followup.send(embed=view.totwEmbed(0))    
+    
+@tree.command(name="searchtool", description="Find a specific tool by its exact name")
+@discord.app_commands.describe(query="The exact name of the tool (e.g., act3)")
+async def searchTool(interaction: discord.Interaction, query: str):
+    await interaction.response.defer()
 
+    results = await scrapeSearch(query)
+    if not results:
+        return await interaction.followup.send(
+            f" No tool named **{query}** was found. Make sure the name is exact!", 
+            ephemeral=True
+        )
 
+    view = CreateEmbed(data=results)
+    await interaction.followup.send(embed=view.searchEmbed(0))
+    
+    saveCacheToFile(results)
 
 # ---------------- Bot Events ---------------- #
 

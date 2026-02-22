@@ -14,3 +14,7 @@ env/
 # Editor settings
 .vscode/
 .idea/
+
+
+# JSONs
+tool_cache.json
