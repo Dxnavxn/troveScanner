@@ -70,7 +70,7 @@ guild_configs: dict[int, dict[str, int | None]] = {}
 EASTERN = ZoneInfo("America/New_York")
 
 # ---------------- Bot Setup ---------------- #
-intents = discord.Intents.default()  # message content intent not required
+intents = discord.Intents.default() 
 bot = commands.Bot(command_prefix="?", intents=intents)
 tree = bot.tree
 
@@ -79,7 +79,7 @@ def saveConfig():
     """Save the current CHANNEL_ID to a JSON file."""
     data = {
         "channel_id": CHANNEL_ID,
-        "owner_id": OWNER_ID, # Keeping your single owner setup
+        "owner_id": OWNER_ID,
         "last_posted_title": LAST_POSTED_TITLE,
         "ping_role_id": PING_ROLE_ID
     }
@@ -181,7 +181,7 @@ async def getToolOfTheWeek():
                 break
 
         
-        # Grab the title (usually in an h1 or h2 inside main)
+        # Grab the title
         titleEl = mainContent.find('h2')
         title = titleEl.get_text(strip=True) if titleEl else "Tool of the Week"
         
@@ -193,7 +193,7 @@ async def getToolOfTheWeek():
             "title": title,
             "summary": summary,
             "link": url,
-            "gif": picUrl, # Keeping key 'gif' so it works with searchEmbed()
+            "gif": picUrl, 
             "updated": datetime.datetime.now().strftime("%Y-%m-%d")
         })
         
@@ -224,7 +224,7 @@ async def scrapeSearch(query: str):
             all_imgs = main_content.find_all('img')
             img_srcs = [img.get('src', '') for img in all_imgs]
 
-            # Extract Title and Tagline (with fallbacks)
+            # Extract Title and Tagline 
             title_el = soup.find('h1')
             title = title_el.get_text(strip=True) if title_el else query.capitalize()
                         
@@ -503,7 +503,6 @@ async def searchTool(interaction: discord.Interaction, query: str):
     log(f"'searchTool' posted by {interaction.user.name.capitalize()}","SEARCH")
     await interaction.followup.send(embed=view.searchEmbed(0))
     
-    # Save to cache so /randomtool can use this GIF later without scraping!
     updateCache(results)
 
 @tree.command(name="randomtool", description="Find a random terminal tool from Terminaltrove.com")
@@ -576,14 +575,12 @@ async def websiteUpdate():
         return
     
     try:
-        # 1. Fetch the Feed
         tools = await getNewTools()
         if not tools: 
             return
         
         latestTool = tools[0]
         
-        # 2. Check if the top tool is actually new
         if latestTool['title'] != LAST_POSTED_TITLE:
             log(f"New Tool Detected: {latestTool['title']} | Posting Update...", "SUCCESS")
 
@@ -592,24 +589,22 @@ async def websiteUpdate():
                 log(f"Could not find channel with ID {CHANNEL_ID}", "ERROR")
                 return
 
-            # 3. Format the Role Ping
+            # Format the Role Ping
             pingMsg = f"<@&{PING_ROLE_ID}> NEW TERMINAL TOOLS JUST DROPPED!" if PING_ROLE_ID else ""
 
-            # 4. Update local cache and send NEW TOOLS embed
+            # Update local cache and send NEW TOOLS embed
             updateCache(tools)
             new_tools_view = CreateEmbed(data=tools, title="NEW TERMINAL TOOLS DETECTED")
             await channel.send(content=pingMsg, embed=new_tools_view.newTools())
 
-            # 5. Fetch and send TOOL OF THE WEEK embed
+            # Fetch and send TOOL OF THE WEEK embed
             totwData = await getToolOfTheWeek()
             if totwData:
                 totw_view = CreateEmbed(data=totwData)
-                # Important: Use the totwEmbed method specifically
                 await channel.send(embed=totw_view.totwEmbed(0))
             else:
                 log("New tool found, but TOTW scrape returned nothing.", "WARNING")
 
-            # 6. Save State
             LAST_POSTED_TITLE = latestTool['title']
             saveConfig()
 
