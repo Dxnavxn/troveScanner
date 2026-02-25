@@ -3,7 +3,8 @@ import discord
 from discord.ext import commands ,tasks  
 from dotenv import load_dotenv
 import xml.etree.ElementTree as ET 
-import requests                
+import requests
+from datetime import time                
 import datetime         
 import json
 import random
@@ -35,12 +36,22 @@ init(autoreset=True)
 
 # Load Enviroment Variables
 load_dotenv()
+
+
+# ---------------- Globals ---------------- #
 TOKEN = os.getenv("DISCORD_TOKEN")
+LAST_POSTED_TITLE = ""
 GUILD_ID = os.getenv("GUILD_ID")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+OWNER_ID = os.getenv("OWNER_ID")
+CONFIG_FILE = "config.json"
+PING_ROLE_ID = None
+
 if not TOKEN:
     log("DISCORD_TOKEN is not set in the environment", "ERROR")
 else: 
     log("DISCORD_TOKEN Loaded", "SUCCESS")
+
 
 # ---------------- Cache ---------------- #
 lastToolCache = {} # Stores tools for commands
@@ -62,6 +73,48 @@ EASTERN = ZoneInfo("America/New_York")
 intents = discord.Intents.default()  # message content intent not required
 bot = commands.Bot(command_prefix="?", intents=intents)
 tree = bot.tree
+
+# ---------------- Save/Load Config ---------------- #
+def saveConfig():
+    """Save the current CHANNEL_ID to a JSON file."""
+    data = {
+        "channel_id": CHANNEL_ID,
+        "owner_id": OWNER_ID, # Keeping your single owner setup
+        "last_posted_title": LAST_POSTED_TITLE,
+        "ping_role_id": PING_ROLE_ID
+    }
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
+    log(f"Configuration saved to {CONFIG_FILE}", "SUCCESS")
+
+def loadConfig():
+    """Load configuration from JSON if it exists."""
+    global CHANNEL_ID, OWNER_ID, LAST_POSTED_TITLE,  PING_ROLE_ID
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r") as f:
+                data = json.load(f)
+
+                # Load Channel ID
+                CHANNEL_ID = data.get("channel_id", CHANNEL_ID)
+                log(f"'CHANNEL_ID' Set: <{CHANNEL_ID}>", "INFO")
+                
+                # Load Owner ID
+                loaded_owner = data.get("owner_id")
+                if loaded_owner:
+                    OWNER_ID = loaded_owner
+                
+                # Load Last Posted Title
+                LAST_POSTED_TITLE = data.get("last_posted_title", "")
+                log(f"'LAST_POSTED_TITLE Found: <{LAST_POSTED_TITLE}>", "INFO")
+
+                # Load Ping Role ID
+                PING_ROLE_ID = data.get("ping_role_id", None)
+                log(f"'PING_ROLE_ID Set: <{PING_ROLE_ID}>", "INFO")
+                
+                log(f"Configuration: {CONFIG_FILE}", "INFO")
+        except Exception as e:
+            log(f"Failed to load config: {e}", "ERROR")
 
 # ---------------- Helper Functions ---------------- #
 async def getNewTools():
@@ -267,7 +320,7 @@ class CreateEmbed(discord.ui.View):
         count = start + 1
         for tool in chunk:
 
-            line = f"{count}> **[{tool['title']}]({tool['link']})** \n{tool['summary']}"
+            line = f"{count} > **[{tool['title']}]({tool['link']})** \n└ {tool['summary']}"
             lines.append(line)
             count += 1
 
@@ -280,7 +333,23 @@ class CreateEmbed(discord.ui.View):
             color=self.color 
         )
         return embed
-    
+        
+    def newTools(self):
+        lines = []
+        for tool in self.data[:6]:
+            line = f"🔹 **[{tool['title']}]({tool['link']})**\n└ *{tool['summary']}*"
+            lines.append(line)
+
+        fullDescription = f"{self.descText}\n\n" + "\n\n".join(lines)
+
+        embed = discord.Embed(
+            title = f"{self.titleText}",
+            description = fullDescription,
+            color = 0xdcc1ea 
+        )
+        embed.set_footer(text="Terminal Trove • Live Updates")
+        embed.timestamp = datetime.datetime.now()
+        return embed
     
     def searchEmbed(self, index=0):
         tool = self.data[index]
@@ -292,9 +361,7 @@ class CreateEmbed(discord.ui.View):
         )
         
         if tool.get('gif'):
-            embed.set_image(url=tool['gif'])
-                    
-        embed.set_footer(text="lol")
+            embed.set_image(url=tool['gif'])  
         return embed
     
     def totwEmbed (self, index=0):
@@ -363,23 +430,45 @@ class CreateEmbed(discord.ui.View):
             await interaction.response.send_message("You're on the last page!", ephemeral=True)
 
 # ---------------- Commands ---------------- #
-@tree.command(name="newtools", description="Shows the newest tools posted on 'terminaltrove.com/'")
-async def newtools(interaction: discord.Interaction):
+@tree.command(name="tools", description="Shows all tools posted on 'terminaltrove.com'")
+async def tools(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    log(f"'newTools' Called by {interaction.user.name.capitalize()}", "NEW TOOL")
+    log(f"'tools' Called by {interaction.user.name.capitalize()}", "NEW TOOL")
     # Get data   
     tools = await getNewTools()
     if not tools:
-        log("'newTools' not loaded", "ERROR")
+        log("'tools' not loaded", "ERROR")
         return await interaction.followup.send("Could not fetch tools at this time...")
     updateCache(tools)
     
     # Create and send embed
-    view = CreateEmbed(data=tools, title="New Tools", color=0xff7ec1)
+    view = CreateEmbed(data=tools, title="Terminal Trove Tools", color=0xff7ec1)
     embed = view.createEmbed()
-    log(f"'newTools' Posted by {interaction.user.name.capitalize()}","NEW TOOL")
+    log(f"'tools' Posted by {interaction.user.name.capitalize()}","NEW TOOL")
     await interaction.followup.send(embed=embed, view=view)
+
+@tree.command(name="newtools", description="Shows the newest tools on 'terminaltrove.com'")
+async def newTools(interaction: discord.Interaction):
+    await interaction.response.defer()
+    log(f"'newTools' called by {interaction.user.name.capitalize()}", "NEW TOOL")
+    
+    tools = await getNewTools()
+    if not tools:
+        return await interaction.followup.send("Could not fetch live feed. Try again later...")
+    
+    updateCache(tools)
+
+    view = CreateEmbed(
+        data = tools[:6],
+        title = "Newst Terminal Trove Tools",
+        description = "The latest additions to the Terminal Trove directory:",
+        color=0x2f82e4
+    )
+
+    log(f"'tools' Posted by {interaction.user.name.capitalize()}")
+    await interaction.followup.send(embed=view.newTools())
+
 
 @tree.command(name="totw", description="Shows the newest 'Tool Of The Week' (Updates every wednesday)")
 async def totw(interaction: discord.Interaction):
@@ -445,14 +534,100 @@ async def randomTool(interaction: discord.Interaction):
         await interaction.response.send_message(embed=view.randomEmbed(0))
         log("Posted without GIF","RANDOM TOOL")
 
+@tree.command(name="setchannel", description="Set the channel where all embeds will be sent")
+async def set_channel(interaction: discord.Interaction) -> None:
+    global CHANNEL_ID
+    
+    if OWNER_ID is None:
+        log("Permission check failed: OWNER_ID is not set in .env or config.", "ERROR")
+        return await interaction.response.send_message("Bot configuration error: Owner ID not found.", ephemeral=True)
+
+    if interaction.user.id != int(OWNER_ID):
+        return await interaction.response.send_message("You do not have permission to set channels.", ephemeral=True)
+
+    CHANNEL_ID = interaction.channel.id
+    saveConfig()
+
+    await interaction.response.send_message(f"Weekly events will now be sent in {interaction.channel.mention}")
+    log(f"Weekly event channel set to {interaction.channel.id} by {interaction.user.name.capitalize()}", "INFO")
+
+@tree.command(name="setrole", description="Set the role to be pinged during updates")
+@discord.app_commands.describe(role="The role to ping")
+async def setRole(interaction: discord.Interaction, role: discord.Role):
+    global PING_ROLE_ID
+
+    if interaction.user.id != int(OWNER_ID):
+        return await interaction.response.send_message("You do not have permission to set the role..")
+    
+    PING_ROLE_ID = role.id
+    saveConfig()
+
+    await interaction.response.send_message(f"Updates will now be sent in {role.mention}")
+    log(f"Ping role set to {role.id} by {interaction.user.name}", "INFO")
 
 
+# ---------------- Background Tasks ---------------- #
+@tasks.loop(minutes=60)
+async def websiteUpdate():
+    global LAST_POSTED_TITLE
+
+    if not CHANNEL_ID:
+        log("Website update skipped: No CHANNEL_ID set.", "WARNING")
+        return
+    
+    try:
+        # 1. Fetch the Feed
+        tools = await getNewTools()
+        if not tools: 
+            return
+        
+        latestTool = tools[0]
+        
+        # 2. Check if the top tool is actually new
+        if latestTool['title'] != LAST_POSTED_TITLE:
+            log(f"New Tool Detected: {latestTool['title']} | Posting Update...", "SUCCESS")
+
+            channel = await bot.fetch_channel(int(CHANNEL_ID))
+            if not channel:
+                log(f"Could not find channel with ID {CHANNEL_ID}", "ERROR")
+                return
+
+            # 3. Format the Role Ping
+            pingMsg = f"<@&{PING_ROLE_ID}> NEW TERMINAL TOOLS JUST DROPPED!" if PING_ROLE_ID else ""
+
+            # 4. Update local cache and send NEW TOOLS embed
+            updateCache(tools)
+            new_tools_view = CreateEmbed(data=tools, title="NEW TERMINAL TOOLS DETECTED")
+            await channel.send(content=pingMsg, embed=new_tools_view.newTools())
+
+            # 5. Fetch and send TOOL OF THE WEEK embed
+            totwData = await getToolOfTheWeek()
+            if totwData:
+                totw_view = CreateEmbed(data=totwData)
+                # Important: Use the totwEmbed method specifically
+                await channel.send(embed=totw_view.totwEmbed(0))
+            else:
+                log("New tool found, but TOTW scrape returned nothing.", "WARNING")
+
+            # 6. Save State
+            LAST_POSTED_TITLE = latestTool['title']
+            saveConfig()
+
+        else:
+            log("Checked Terminal Trove: No new tools found.", "INFO")
+    
+    except Exception as e:
+        log(f"Pulse Task Error: {e}", "ERROR")
 
 # ---------------- Bot Events ---------------- #
 @bot.event
 async def on_ready():
     log(f"Logged in as {bot.user} (ID: {bot.user.id}) ", "SUCCESS")
     
+    if not websiteUpdate.is_running():
+        websiteUpdate.start()
+        log("Website Update Task Started", "INFO")
+
     # Sync Commands
     try:
         synced = await bot.tree.sync()
@@ -460,11 +635,13 @@ async def on_ready():
     except Exception as e:
         log(f"Failed to sync commands: {e}", "ERROR")
 
-    tools = await getNewTools()
-    log(f"Test Fetch Successful! Found {len(tools)} Tools", "INFO")
+
 
 # ---------------- Run ---------------- #
 def main():
+    loadConfig()
+    log("Config Loaded", "SUCCESS")
+
     try:
         bot.run(TOKEN)
     except Exception as e:

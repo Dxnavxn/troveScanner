@@ -18,3 +18,4 @@ env/
 
 # JSONs
 tool_cache.json
+config.json
