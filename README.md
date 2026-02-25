@@ -1,10 +1,10 @@
-# 🛠️ Terminal Trove Discord Bot
+# Terminal Trove Discord Bot
 
 A powerful Discord bot designed to fetch, cache, and showcase the best terminal tools from [Terminal Trove](https://terminaltrove.com). Stay updated with the latest CLI utilities directly from your server.
 
 ---
 
-## ✨ Features
+## Features
 
 * **Live Updates:** Automatically polls the Terminal Trove RSS feed every 60 minutes for new additions.
 * **Tool of the Week (TOTW):** Scrapes and displays the featured "Tool of the Week," complete with GIF/Banner previews.
@@ -15,7 +15,7 @@ A powerful Discord bot designed to fetch, cache, and showcase the best terminal 
 
 ---
 
-## 🚀 Commands
+## Commands
 
 | Command | Description |
 | :--- | :--- |
@@ -29,7 +29,7 @@ A powerful Discord bot designed to fetch, cache, and showcase the best terminal 
 
 ---
 
-## 🛠️ Setup & Installation
+## Setup & Installation
 
 ### 1. Prerequisites
 * Python 3.8 or higher
