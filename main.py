@@ -515,7 +515,7 @@ async def randomTool(interaction: discord.Interaction):
         return await interaction.response.send_message("Cache is empty! Run /newtools.", ephemeral=True)
     
     toolChoice = random.choice(tools)
-    log(f"'randomTool' ran by {interaction.user.name.capitalize()} | TOOL: '{toolChoice["title"]}'", "RANDOM TOOL")
+    log(f"'randomTool' ran by {interaction.user.name.capitalize()} | TOOL: '{toolChoice['title']}'", "RANDOM TOOL")
 
     if 'gif' not in toolChoice or not toolChoice['gif']:
         await interaction.response.defer() 
@@ -630,11 +630,7 @@ async def on_ready():
     except Exception as e:
         log(f"Failed to sync commands: {e}", "ERROR")
 
-    # Bot Status | Version Number
-    await bot.change_presence(
-        status=discord.Status.online,
-        activity=discord.Game(name="v1.1")
-    )
+
 
 
 
