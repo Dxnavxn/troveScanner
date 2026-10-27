@@ -566,7 +566,7 @@ async def setRole(interaction: discord.Interaction, role: discord.Role):
 
 
 # ---------------- Background Tasks ---------------- #
-@tasks.loop(minutes=60)
+@tasks.loop(minutes=1439)
 async def websiteUpdate():
     global LAST_POSTED_TITLE
 
