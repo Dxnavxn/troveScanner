@@ -14,7 +14,10 @@ env/
 # Editor settings
 .vscode/
 .idea/
+tempCodeRunnerFile*
 
+# Testing & Cache
+.pytest_cache/
 
 # JSONs
 tool_cache.json

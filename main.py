@@ -92,7 +92,7 @@ def loadConfig():
     global CHANNEL_ID, OWNER_ID, LAST_POSTED_TITLE,  PING_ROLE_ID
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
                 # Load Channel ID
@@ -283,7 +283,7 @@ async def scrapeSearch(query: str):
 def updateCache(newData):
     # Load the existing tools from the file if it exists
     try:
-        with open('tool_cache.json', 'r') as f:
+        with open('tool_cache.json', 'r', encoding='utf-8') as f:
             oldData = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         # If the file doesn't exist, start with an empty list
@@ -300,7 +300,7 @@ def updateCache(newData):
             addedCount += 1
 
     #  Save the combined list back to the file
-    with open('tool_cache.json', 'w') as f:
+    with open('tool_cache.json', 'w', encoding='utf-8') as f:
         json.dump(oldData, f, indent=4)
     
     if addedCount == 0:
@@ -521,7 +521,7 @@ async def searchTool(interaction: discord.Interaction, query: str):
 @tree.command(name="randomtool", description="Find a random terminal tool from Terminaltrove.com")
 async def randomTool(interaction: discord.Interaction):
     try:
-        with open('tool_cache.json', 'r') as f:
+        with open('tool_cache.json', 'r', encoding='utf-8') as f:
             tools = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
         log("Unable to post 'randomTool")
