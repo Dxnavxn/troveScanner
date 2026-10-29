@@ -124,7 +124,7 @@ async def getNewTools():
     respsone = requests.get(url)
 
     if respsone.status_code != 200:
-        log(f"Cannot Fetch 'newTools' URL: <{url}>", "ERROR")
+        log(f"Cannot Fetch 'newTools' URL: <{url}> | STATUS CODE: {response.status_code}", "ERROR")
         return [] 
     else:
         log(f"'newTool' URL Found", "SUCCESS")
