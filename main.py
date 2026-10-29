@@ -168,7 +168,7 @@ async def getToolOfTheWeek():
         response = requests.get(url, headers=headers, timeout=10)
 
         if response.status_code != 200:
-            log(f"Cannot Fetch 'toolOfTheWeek' URL: <{url}>", "ERROR")
+            log(f"Cannot Fetch 'toolOfTheWeek' URL: <{url}> | STATUS CODE: {response.status_code}", "ERROR")
             return []
         
         log(f"'toolOfTheWeek' URL Loaded", "SUCCESS")
